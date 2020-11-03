@@ -8,7 +8,7 @@ RS::ReedSolomon<TEST_DATA_SIZE, TEST_ECC_SIZE> PerformanceTest::rs;
 
 PReport
 PerformanceTest::run_tests(uint32_t laps_cnt, uint32_t cnt_per_lap) {
-    assert(laps_cnt < 64 && cnt_per_lap < 64);
+    //assert(laps_cnt < 64 && cnt_per_lap < 64);
     std::cout << "Starting performance tests\n";
     PReport enc_rep;
     PReport dec_rep;

@@ -16,6 +16,7 @@ endif()
 
 include_directories(${RS_INCLUDE_DIRS})
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 file(GLOB CPP_FILES *.cpp)
 add_executable(${PROJECT_NAME} ${CPP_FILES})
 
