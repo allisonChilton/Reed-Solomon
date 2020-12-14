@@ -1,5 +1,4 @@
-/* Author: Mike Lubinets (aka mersinvald)
- * Date: 29.12.15
+/* Author: Allison Chilton
  *
  * See LICENSE */
 
@@ -56,9 +55,16 @@ double get_time(){
   return retval;
 }
 
-int main() {
+int main(int argc, char** argv) {
+    char* filename;
+    if(argc == 2){
+        filename = argv[1];
+    }else{
+        printf("Usage: <program name> <.txt filename>\n");
+        exit(1);
+    }
 
-    FILE* fp = fopen("examplefile.txt","r");
+    FILE* fp = fopen(filename,"r");
     fseek(fp, 0, SEEK_END);
     int fsize = ftell(fp);
     int chunks = fsize / (255-ECC_LENGTH);
