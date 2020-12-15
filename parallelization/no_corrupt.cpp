@@ -8,9 +8,7 @@
 
 using namespace std;
 
-#ifndef ECC_LENGTH
 #define ECC_LENGTH 16
-#endif
 
 typedef struct msg_buffers{
     char** buffers;
@@ -106,16 +104,6 @@ int main(int argc, char** argv) {
     }
 
     timings[timeIdx++] = get_time();
-
-    /* corrupt */
-    for(int i = 0; i < buffers.length; ++i){
-        char* encode_dest = encoded + ((buffers.chunksize + ECC_LENGTH) * i);
-
-        // Corrupting maximum amount per chunk
-        for(uint i = 0; i < 0+(ECC_LENGTH / 2); i++) {
-            encode_dest[i] = 'E';
-        }
-    }
 
     timings[timeIdx++] = get_time();
 

@@ -5,12 +5,11 @@
 #include "rs.hpp"
 #include "string.h"
 #include "timer.h"
+#include "mpi.h"
 
 using namespace std;
 
-#ifndef ECC_LENGTH
 #define ECC_LENGTH 16
-#endif
 
 typedef struct msg_buffers{
     char** buffers;
@@ -65,6 +64,17 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
+    int id;	    	     /* process id */
+    int num_procs;		     /* number of processes */
+    MPI_Status status;	     /* return status for receive */
+    double *message;
+    MPI_Request req;
+
+
+    MPI_Init( &argc, &argv );
+    MPI_Comm_rank( MPI_COMM_WORLD, &id );
+    MPI_Comm_size( MPI_COMM_WORLD, &num_procs );
+
     FILE* fp = fopen(filename,"r");
     fseek(fp, 0, SEEK_END);
     int fsize = ftell(fp);
@@ -79,6 +89,12 @@ int main(int argc, char** argv) {
     fread(messagelong, 1, msglength, fp);
     fclose(fp);
 
+    int mpi_iter_width = chunks / num_procs;
+    if( chunks % num_procs != 0){
+        mpi_iter_width++;
+    }
+
+
     /* Timer setup */
     initialize_timer();
     start_timer();
@@ -87,11 +103,17 @@ int main(int argc, char** argv) {
 
 
     /* initialization */
+
+    int encoded_size = sizeof(char) * (msglength + (ECC_LENGTH * chunks));
     const int chunklen = 255 - ECC_LENGTH;
     chunks = msglength / chunklen;
     char* repaired = (char*) malloc(sizeof(char) * msglength);
-    char* encoded = (char*) malloc(sizeof(char) * (msglength + (ECC_LENGTH * chunks)));
+    char* encoded = (char*) malloc(encoded_size);
     RS::ReedSolomon<chunklen, ECC_LENGTH> rs;
+    char* rbuf;
+    if ( id == 0){
+        rbuf = (char*) malloc(encoded_size);
+    }
 
     timings[timeIdx++] = get_time();
 
@@ -99,16 +121,31 @@ int main(int argc, char** argv) {
     msg_buffers buffers = split_messages(messagelong, msglength);
     timings[timeIdx++] = get_time();
 
+    int start = id * mpi_iter_width;
+    int stop = min(buffers.length, mpi_iter_width * (id + 1));
+
     /* encode */
-    for(int i = 0; i < buffers.length; ++i){
+    for(int i = start ; i < stop; ++i){
         char* encode_dest = encoded + ((buffers.chunksize + ECC_LENGTH) * i);
         rs.Encode(buffers.buffers[i], encode_dest);
     }
 
+    int eoffset = (buffers.chunksize + ECC_LENGTH) * start;
+    int soffset = (buffers.chunksize + ECC_LENGTH) * stop;
+    char* sendbuf = encoded + (eoffset);
+    int root = 0;
+    int send_size = soffset - eoffset;
+
+    // this is technically unnecessary before moving on to the decoding but to get an apples to apples comparison I feel its only fair to account for sync time 
+    // MPI_Gather(sendbuf, send_size, MPI_CHAR, rbuf, send_size, MPI_CHAR, root, MPI_COMM_WORLD);
+
     timings[timeIdx++] = get_time();
+    // if(id == 0)
+    //     memcpy(encoded, rbuf, encoded_size);
+    // MPI_Bcast(encoded, encoded_size, MPI_CHAR, root, MPI_COMM_WORLD);
 
     /* corrupt */
-    for(int i = 0; i < buffers.length; ++i){
+    for(int i = start; i < stop; ++i){
         char* encode_dest = encoded + ((buffers.chunksize + ECC_LENGTH) * i);
 
         // Corrupting maximum amount per chunk
@@ -120,12 +157,22 @@ int main(int argc, char** argv) {
     timings[timeIdx++] = get_time();
 
     /* decode */
-    for(int i = 0; i < buffers.length; ++i){
+    for(int i = start; i < stop; ++i){
         char* encode_src = encoded + ((buffers.chunksize + ECC_LENGTH) * i);
         rs.Decode(encode_src, repaired + (i * buffers.chunksize));
     }
 
+
+    eoffset = start * buffers.chunksize;
+    soffset = stop * buffers.chunksize;
+    sendbuf = repaired + (eoffset);
+    send_size = soffset - eoffset;
+
+    MPI_Gather(sendbuf, send_size, MPI_CHAR, rbuf, send_size, MPI_CHAR, root, MPI_COMM_WORLD);
+
     timings[timeIdx++] = get_time();
+    if(id == 0)
+        memcpy(repaired, rbuf, msglength);
 
     if(VERBOSE){
         std::cout << "Original:  " << messagelong  << std::endl;
@@ -133,14 +180,18 @@ int main(int argc, char** argv) {
         std::cout << "Repaired:  " << repaired << std::endl;
     }
 
-    std::cout << ((memcmp(messagelong, repaired, msglength) == 0) ? "SUCCESS" : "FAILURE") << std::endl;
-    #ifdef PRINT_TIMING
-    for(int i = 0; i < timeIdx; ++i){
-        printf("Checkpoint %d: %.6f\n",  i, timings[i]);
+    if( id == 0){
+        std::cout << ((memcmp(messagelong, repaired, msglength) == 0) ? "SUCCESS" : "FAILURE") << std::endl;
+        #ifdef PRINT_TIMING
+        for(int i = 0; i < timeIdx; ++i){
+            printf("Checkpoint %d: %.6f\n",  i, timings[i]);
+        }
     }
     #endif
 
     free(encoded); free(messagelong); free(repaired);
+   MPI_Finalize();
+
     return 0;
 }
 

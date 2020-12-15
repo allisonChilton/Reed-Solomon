@@ -10,7 +10,9 @@
 
 using namespace std;
 
+#ifndef ECC_LENGTH
 #define ECC_LENGTH 16
+#endif
 
 typedef struct msg_buffers{
     char** buffers;
